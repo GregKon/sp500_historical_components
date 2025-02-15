@@ -14,9 +14,18 @@ import urllib.parse
 import datetime
 from typing import List, Dict
 from utils import isoformat
+import os
 
 wikipedia_pages = {
-    'SPX': 'List of S&P 500 companies'
+    'SPX': 'List of S&P 500 companies',
+    'NASDAQ': "Nasdaq-100#Components",
+    'Nasdaq100' : "Nasdaq-100",
+    'S400' : 'List of S&P 400 companies',
+    'DowJones': 'Dow_Jones_Industrial_Average',
+    'Russell_1000' :'Russell_1000_Index',
+    'FTSE_350' : 'FTSE_350_Index',
+    'Forbes2000': 'Forbes_Global_2000',
+    
 }
 wikipedia_api_url = "https://en.wikipedia.org/w/api.php"
 wikipedia_page_url_base = "https://en.wikipedia.org/w/index.php"
@@ -116,16 +125,38 @@ def get_index_components_history(index: str = 'SPX', start_date=None, end_date=N
         historical_components[str(date)] = list(components_at_date.index)
     return historical_components
 
+def components_to_separate_csv(components: dict, index: str) -> None:
+    '''
+    For every row create separate file with the list of components coma separated, in name is date of component
+    '''
+    for date, components_list in components.items():
+        # Sprawdź, czy wszystkie elementy w components_list są stringami
+        if all(isinstance(component, str) for component in components_list):
+            # Format date to remove time and replace invalid characters
+            formatted_date = date.split()[0]  # Remove time part
+            with open(f"{index}/{index}_{formatted_date}.csv", 'w') as f:
+                f.write(','.join(components_list))
+        else:
+            print(f"Skipping date {date} due to non-string components")
+
 if __name__ == '__main__':
-    print('Get current components')
-    sp500 = get_index_components_at(index='SPX')
-    print(sp500.index, flush=True)
-    print('Get historical components at October 2018')
-    sp500_2015 = get_index_components_at(index='SPX', when='2018-10-01')
-    print(sp500_2015.index, flush=True)
-    print('Get historical components monthly since 2008') # before then, the list was not in table format
-    sp500_monthly = get_index_components_history(index='SPX', start_date='2008-01-01', freq='M')
-    sp500_monthly = pd.DataFrame.from_dict(sp500_monthly, orient='index')
-    sp500_monthly.to_csv('sp500_monthly.csv')
+    
+    freq = 'QS'        
+    for index in wikipedia_pages.keys():
+        print('Get current components for', index) 
+        #create directory named index
+        os.makedirs(index, exist_ok=True)
+        
+        #df = get_index_components_at(index=index)
+        #print(df.index, flush=True)
+        #print('Get historical components at October 2018')
+        #sp500_2015 = get_index_components_at(index=index, when='2020-01-01')
+        #print(sp500_2015.index, flush=True)
+        
+        print('Get historical components monthly since 2008') # before then, the list was not in table format
+        components_dict = get_index_components_history(index=index, start_date='2015-01-01', freq=freq)        
+        components_to_separate_csv(components_dict, index)
+        # components_dict = pd.DataFrame.from_dict(components_dict, orient='index')
+        # components_dict.to_csv(index + '/' + index + '_components_' + freq + '.csv')
 
 
