@@ -16,8 +16,10 @@ from typing import List, Dict
 from utils import isoformat
 import os
 
+
 wikipedia_pages = {
     'SPX': 'List of S&P 500 companies',
+    'S600':'List of S&P 600 companies',     
     'NASDAQ': "Nasdaq-100#Components",
     'Nasdaq100' : "Nasdaq-100",
     'S400' : 'List of S&P 400 companies',
@@ -72,28 +74,35 @@ def get_revisions_metadata(page_title: str, rvstart=None, rvend=None, rvdir: str
     data = r.json()
     print('response:', data, flush=True)
     pages = data["query"]["pages"]
+    #if pages[0]['revisions'] not exist return empty list
+    if 'revisions' not in pages[0]:
+        return []
     revisions = pages[0]['revisions']
     print('revision')
     print(revisions)
     return revisions
 
-def get_index_components_at(index: str = 'SPX', when: str = None) -> pd.DataFrame:
+def get_index_components_at(index: str = 'SPX', when: str = None) -> tuple[pd.DataFrame, bool]:
     """Returns index components at a given date, according to the latest update on Wikipedia before that date.
 
     Args:
         index: The index to get components for. Currently only 'SPX' is supported. Default = 'SPX'
         when: The date when to search components. Default = today
 
-    Returns:
+    Returns: tuple[df, revision_exist]
         
     """
     if when is None:
         when = datetime.datetime.today()
     page = wikipedia_pages[index]
     revisions = get_revisions_metadata(page, rvdir='older', rvstart=when) # get latest revision before 'when'
-    revision = revisions[0]
-    print(f"Got results from {revision['timestamp']}")
-    table = pd.read_html(f"{wikipedia_page_url_base}?title={urllib.parse.quote(page)}&oldid={revision['revid']}")
+    if revisions != []:
+        revision = revisions[0]
+        print(f"Got results from {revision['timestamp']}")
+        table = pd.read_html(f"{wikipedia_page_url_base}?title={urllib.parse.quote(page)}&oldid={revision['revid']}")
+    else:
+        table = pd.read_html(f"{wikipedia_page_url_base}?title={urllib.parse.quote(page)}")
+        
     #components_df = table[0]
     for df in table: # usually the components df will be table[0], but sometimes there is a table before that just holds comments about the article, which we ignore.
         if 'Symbol' in df.columns:
@@ -103,7 +112,7 @@ def get_index_components_at(index: str = 'SPX', when: str = None) -> pd.DataFram
             df = df.set_index('Ticker symbol')
             break
     df.index.name = 'Symbol'
-    return df.sort_index()
+    return df.sort_index(), revisions != []
 
 def get_index_components_history(index: str = 'SPX', start_date=None, end_date=None, freq='M'):
     """Get the historical components between start_date and end_date at a given frequency (e.g. monthly)
@@ -121,8 +130,12 @@ def get_index_components_history(index: str = 'SPX', start_date=None, end_date=N
     dates = pd.date_range(start=start_date, end=end_date, freq=freq)
     historical_components = {}
     for date in dates:
-        components_at_date = get_index_components_at(index=index, when=date)
-        historical_components[str(date)] = list(components_at_date.index)
+        components_at_date, with_revision = get_index_components_at(index=index, when=date)
+        if with_revision:   # if no revision, then no more historical data
+            historical_components[str(date)] = list(components_at_date.index)
+        else:
+            historical_components[str(datetime.date.today())] = list(components_at_date.index)
+            break
     return historical_components
 
 def components_to_separate_csv(components: dict, index: str) -> None:
@@ -141,7 +154,7 @@ def components_to_separate_csv(components: dict, index: str) -> None:
 
 if __name__ == '__main__':
     
-    freq = 'QS'        
+    freq = 'Y'        
     for index in wikipedia_pages.keys():
         print('Get current components for', index) 
         #create directory named index
